@@ -245,20 +245,20 @@
             const noteIndex = Math.floor(Math.random() * scale.length);
             const freq = scale[noteIndex];
 
-            // 1. 오실레이터 설정 (Triangle 파형이 현악기와 비슷)
-            oscillator.type = 'triangle';
+            // 1. 오실레이터 설정 (Sine 파형으로 변경하여 부드러운 소리 - 오르골/하프 느낌)
+            oscillator.type = 'sine';
             oscillator.frequency.value = freq;
 
-            // 2. 필터 설정 (Low pass - 부드러운 소리)
+            // 2. 필터 설정 (더 부드럽게 깎음)
             filterNode.type = 'lowpass';
-            filterNode.frequency.setValueAtTime(3000, now);
-            filterNode.frequency.exponentialRampToValueAtTime(100, now + 0.5); // 필터가 빠르게 닫힘
+            filterNode.frequency.setValueAtTime(800, now); // 시작 주파수를 낮춤
+            filterNode.frequency.linearRampToValueAtTime(200, now + 1.5);
 
-            // 3. 볼륨(Gain) 엔벨로프 - 퉁기는 느낌 (Attack 짧고 Decay 길게)
-            const volume = Math.min(intensity * 0.5, 0.3); // 강도에 따른 볼륨 조절
+            // 3. 볼륨(Gain) 엔벨로프 - 부드러운 시작과 긴 여운
+            const volume = Math.min(intensity * 0.5, 0.2); // 전체 볼륨을 살짝 낮춤
             gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(volume, now + 0.01); // Attack
-            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.5); // Long Decay (여운)
+            gainNode.gain.linearRampToValueAtTime(volume, now + 0.15); // Attack을 0.15초로 늘려 아주 부드럽게
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 2.5); // 아주 긴 여운
 
             // 연결: Osc -> Filter -> Gain -> Destination
             oscillator.connect(filterNode);
