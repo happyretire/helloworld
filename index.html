@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magical Hangul World</title>
+    <!-- 구글 폰트: 부드러운 느낌의 'Jua' (배달의민족 주아체)와 'Gowun Dodum' (고운돋움) -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            /* 한국적인 느낌이 나는 은은한 먹색/남색 배경 */
+            background: radial-gradient(circle at center, #2c3e50 0%, #000000 100%);
+            overflow: hidden;
+            font-family: 'Gowun Dodum', sans-serif;
+            height: 100vh;
+            color: white;
+        }
+
+        /* Canvas for Particle System */
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Overlay for "Click to Start" */
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            transition: opacity 0.8s ease;
+        }
+
+        #overlay h1 {
+            font-family: 'Jua', sans-serif;
+            font-size: 3rem;
+            color: #f1f2f6;
+            margin-bottom: 20px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        #overlay p {
+            font-size: 1.2rem;
+            color: #a4b0be;
+        }
+
+        /* Date/Time Display */
+        #datetime {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 10;
+            padding: 20px 30px;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            text-align: right;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            transition: transform 0.3s ease;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        #datetime:hover {
+            transform: scale(1.02);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .time {
+            font-family: 'Jua', sans-serif;
+            font-size: 2rem;
+            color: #ffeaa7;
+            /* 한국적인 연한 금색 */
+            display: block;
+            margin-bottom: 5px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .date {
+            font-size: 1rem;
+            opacity: 0.7;
+            color: #dfe6e9;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="overlay">
+        <h1>화면을 클릭하여 시작하세요</h1>
+        <p>소리와 함께 특별한 경험을 즐겨보세요</p>
+    </div>
+
+    <canvas id="canvas1"></canvas>
+
+    <div id="datetime">
+        <span class="time" id="timeDisplay">00:00:00</span>
+        <span class="date" id="dateDisplay">YYYY-MM-DD</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas1');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let particleArray = [];
+        let adjustX = 0;
+        let adjustY = 0;
+
+        // --- Web Audio API (가야금/거문고 스타일 합성) ---
+        let audioCtx;
+        let isAudioInitialized = false;
+        let lastPlayedTime = 0;
+
+        // 국악 5음계 (황종, 태주, 중려, 임종, 남려) - 근사치 주파수 (Eb Major Pentatonic 느낌)
+        const scale = [
+            261.63, // C4 (중)
+            293.66, // D4 (임)
+            329.63, // E4 (무)
+            392.00, // G4 (황)
+            440.00, // A4 (태)
+            523.25, // C5
+            587.33  // D5
+        ];
+
+        function initAudio() {
+            if (isAudioInitialized) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            isAudioInitialized = true;
+        }
+
+        // 현악기 퉁기는 소리 (Plucked String) 합성
+        function playTraditionalSound(intensity) {
+            if (!isAudioInitialized) return;
+
+            // 소리 너무 자주 나지 않게 제한 (Throttle)
+            const now = audioCtx.currentTime;
+            if (now - lastPlayedTime < 0.1) return;
+            lastPlayedTime = now;
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            const filterNode = audioCtx.createBiquadFilter();
+
+            // 랜덤한 음계 선택
+            const noteIndex = Math.floor(Math.random() * scale.length);
+            const freq = scale[noteIndex];
+
+            // 1. 오실레이터 설정 (Triangle 파형이 현악기와 비슷)
+            oscillator.type = 'triangle';
+            oscillator.frequency.value = freq;
+
+            // 2. 필터 설정 (Low pass - 부드러운 소리)
+            filterNode.type = 'lowpass';
+            filterNode.frequency.setValueAtTime(3000, now);
+            filterNode.frequency.exponentialRampToValueAtTime(100, now + 0.5); // 필터가 빠르게 닫힘
+
+            // 3. 볼륨(Gain) 엔벨로프 - 퉁기는 느낌 (Attack 짧고 Decay 길게)
+            const volume = Math.min(intensity * 0.5, 0.3); // 강도에 따른 볼륨 조절
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(volume, now + 0.01); // Attack
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.5); // Long Decay (여운)
+
+            // 연결: Osc -> Filter -> Gain -> Destination
+            oscillator.connect(filterNode);
+            filterNode.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start(now);
+            oscillator.stop(now + 1.5);
+        }
+
+        // --- Clock Logic ---
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('ko-KR', { hour12: true }); // 오전/오후 표시
+            const dateString = now.toLocaleDateString('ko-KR', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            document.getElementById('timeDisplay').textContent = timeString;
+            document.getElementById('dateDisplay').textContent = dateString;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- Interaction ---
+        const mouse = {
+            x: null,
+            y: null,
+            radius: 120 // 반경을 조금 더 넓힘
+        }
+
+        window.addEventListener('mousemove', function (event) {
+            mouse.x = event.x;
+            mouse.y = event.y;
+
+            // 마우스가 빠르게 움직이면 소리 트리거
+            // (간단한 구현을 위해 무조건 움직임이 있으면 확률적으로 소리 재생)
+            if (isAudioInitialized && Math.random() < 0.1) {
+                // playTraditionalSound(0.5); // 너무 시끄러울 수 있어서 파티클 충돌시 재생으로 변경
+            }
+        });
+
+        const overlay = document.getElementById('overlay');
+        overlay.addEventListener('click', () => {
+            initAudio();
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 800);
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        });
+
+        // --- Particle System ---
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.originX = x;
+                this.originY = y;
+                this.size = 2;
+                this.baseColor = 'rgba(255,255,255,0.8)'; // 부드러운 흰색
+                this.activeColor = '#ffeaa7'; // 따뜻한 난색 계열
+                this.color = this.baseColor;
+                this.vx = 0;
+                this.vy = 0;
+                this.friction = 0.92; // 마찰을 줄여서 좀 더 둥둥 떠다니는 느낌
+                this.ease = 0.08; // 복귀 속도를 부드럽게
+                this.dx = 0;
+                this.dy = 0;
+                this.distance = 0;
+                this.force = 0;
+                this.angle = 0;
+                this.triggeredSound = false; // 소리 중복 재생 방지
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+            update() {
+                this.dx = mouse.x - this.x;
+                this.dy = mouse.y - this.y;
+                this.distance = Math.sqrt(this.dx * this.dx + this.dy * this.dy);
+
+                if (this.distance < mouse.radius) {
+                    this.force = -mouse.radius / this.distance;
+                    this.angle = Math.atan2(this.dy, this.dx);
+
+                    let pushX = Math.cos(this.angle) * this.force * 6;
+                    let pushY = Math.sin(this.angle) * this.force * 6;
+
+                    this.vx += pushX;
+                    this.vy += pushY;
+                    this.color = this.activeColor;
+
+                    // 파티클이 강하게 튕겨나갈 때만 소리 재생 시도
+                    if (!this.triggeredSound && Math.abs(pushX) + Math.abs(pushY) > 2) {
+                        playTraditionalSound(Math.abs(pushX));
+                        this.triggeredSound = true;
+                    }
+
+                } else {
+                    // 복귀
+                    if (this.color !== this.baseColor) {
+                        this.color = this.baseColor;
+                    }
+                    this.triggeredSound = false; // 리셋
+                }
+
+                this.vx += (this.originX - this.x) * this.ease;
+                this.vy += (this.originY - this.y) * this.ease;
+
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+        }
+
+        function init() {
+            particleArray = [];
+            // 'Jua' 폰트로 부드러운 글씨체 설정 (한글/영어 모두 지원)
+            // 화면 크기에 비례한 폰트 크기
+            let fontSize = Math.min(canvas.width / 8, 200);
+            ctx.font = `normal ${fontSize}px 'Jua'`;
+
+            const textString = 'Hello World';
+
+            const textMetrics = ctx.measureText(textString);
+            const textWidth = textMetrics.width;
+
+            // 중앙 정렬
+            adjustX = (canvas.width / 2) - (textWidth / 2);
+            adjustY = (canvas.height / 2) + (fontSize / 3);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillText(textString, adjustX, adjustY);
+
+            const gap = 5;
+            const textData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            for (let y = 0; y < canvas.height; y += gap) {
+                for (let x = 0; x < canvas.width; x += gap) {
+                    const alpha = textData.data[(y * 4 * textData.width) + (x * 4) + 3];
+                    if (alpha > 128) {
+                        particleArray.push(new Particle(x, y));
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            // 잔상 효과를 위해 투명도 있는 사각형으로 덮기
+            ctx.fillStyle = 'rgba(20, 25, 40, 0.15)'; // 배경색과 유사하지만 투명하게
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            particleArray.forEach(particle => {
+                particle.draw();
+                particle.update();
+            });
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', function () {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            init();
+        });
+
+        window.addEventListener('mouseout', function () {
+            mouse.x = undefined;
+            mouse.y = undefined;
+        });
+
+        // 폰트 로드 대기 후 초기화 (폰트 미적용 방지)
+        document.fonts.ready.then(function () {
+            init();
+            animate();
+        });
+
+    </script>
+</body>
+
+</html>
